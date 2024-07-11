@@ -1,5 +1,8 @@
-user_name = ""  # 你的帳號
-user_password = ""  # 你的密碼
+######## PUT YOUR USERNAME AND PASSWORD HERE ########
+user_name = "YOUR USERNAME(Only ID)"
+user_password = "YOUR PASSWORD"
+customized_folder_name = "moodle備份" # 想創建的資料夾名稱，預設會存在桌面，名稱為「moodle備份」
+#####################################################
 
 import time
 from selenium import webdriver
@@ -16,8 +19,9 @@ import chardet
 import certifi
 import tkinter as tk
 from tkinter import ttk
-#from selenium.webdriver.support.ui import WebDriverWait
-#from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
 def create_ui(courses):
     # 創建主窗口
     root = tk.Tk()
@@ -74,7 +78,7 @@ def create_ui(courses):
 desktop_path = Path.home() / "Desktop"
 
 # 要創建的資料夾名稱
-base_folder_name = "moodle備份5"
+base_folder_name = customized_folder_name
 base_folder_path = desktop_path / base_folder_name
 
 # 檢查資料夾是否存在，如果不存在就創建
@@ -115,12 +119,54 @@ try:
     # 等待登錄後的頁面加載
     driver.implicitly_wait(20)  # 最多等待20秒
 
+    def __graduated_student_process(driver: webdriver.Chrome) -> webdriver.Chrome:
+        """畢業生因爲無法直接跳轉到 Moodle 網站，中間會經過一個畢業生頁面，因此需要特殊處理。
+        
+        一般生：
+        - Step1: https://i.nccu.edu.tw/Login.aspx?app=moodle&ReturnUrl=%2fsso_app%2fMoodleSSO.aspx
+        - Step2: https://moodle.nccu.edu.tw/my/
+        
+        本年度畢業生：
+        - Step1: https://i.nccu.edu.tw/Login.aspx?app=moodle&ReturnUrl=%2fsso_app%2fMoodleSSO.aspx
+        - Step2: https://i.nccu.edu.tw/sso_app/MoodleSSO.aspx -> 此為畢業生特別的中間轉介頁面
+        - Step3: https://moodle.nccu.edu.tw/my/
+        """
+        print("畢業生特別處理中...")
+        try:
+            moodle_button = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, '//a[@href="https://i.nccu.edu.tw/sso_app/MoodleSSO.aspx" and text()="登入Moodle"]'))
+            )
+            moodle_button.click()
+            print("已點擊 '登入Moodle' 按鈕")
+            time.sleep(3)  # 等待3秒確保分頁成功被開啟
+
+            # 獲取當前所有的分頁
+            window_handles = driver.window_handles
+
+            # 切換到新分頁
+            driver.switch_to.window(window_handles[-1])
+
+        except Exception as e:
+            print(f"找不到 '登入Moodle' 按鈕: {e}")
+        
+        return driver
+
     # 確認登錄是否成功
-    current_url = driver.current_url
-    if current_url == 'https://moodle.nccu.edu.tw/my/':
+    current_url = driver.current_url    
+    
+    if current_url == 'https://i.nccu.edu.tw/NotRegister.aspx?stanum=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB0OMSedGfaTOnVDABs/0dvW3hAxZRtJ6Ay+c=': # if you are a graduated student
+        driver = __graduated_student_process(driver)
+        current_url = driver.current_url # 更新當前的 URL，應該成功變成 https://moodle.nccu.edu.tw/my/
+        
+    if current_url == 'https://moodle.nccu.edu.tw/my/': # if you are not a graduated student or you are a graduated student and finish the special process.
         print("成功登錄")
-    else:
-        print("登錄失敗或需要進一步驗證")
+    else: # Some wrong happened....qqqqq
+        if current_url == "https://i.nccu.edu.tw/Login.aspx?app=moodle&ReturnUrl=%2fsso_app%2fMoodleSSO.aspx": # 若還是在這個頁面，表示忘記設定帳密或是帳密錯誤
+            print("Sweet hint for you: 遇到這個錯誤代表登錄失敗，請檢查用戶名和密碼是否正確。或是您還沒設定帳密，請移動到程式碼最上方設定您的用戶名和密碼。")
+        else:
+            print(f"可能發生其他錯誤。您目前的網址：{current_url}")
+        
+        raise Exception(f"無法成功進入 moodle 頁面(https://moodle.nccu.edu.tw/my/)，登錄失敗或需要進一步驗證。目前你在的網址：{current_url}")
 
     # 在這裡可以繼續使用 Selenium 進行後續操作，如點擊連結、下載文件等
     # 例如，找到目標連結並點擊
